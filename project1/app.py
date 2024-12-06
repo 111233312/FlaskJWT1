@@ -10,29 +10,48 @@ app.config['JWT_SECRET_KEY'] = 'your_jwt_secret_key'
 db = SQLAlchemy(app)
 jwt = JWTManager(app)
 
+
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(150), unique=True, nullable=False)
     password = db.Column(db.String(150), nullable=False)
 
+
 @app.route('/')
 def home():
     return render_template('base.html')
 
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
+
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
+
+        # Проверяем, существует ли пользователь с таким именем
+        existing_user = User.query.filter_by(username=username).first()
+        if existing_user:
+            return jsonify({"msg": "Username already exists"}), 400
+
+        # Хэшируем пароль перед сохранением
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
         new_user = User(username=username, password=hashed_password)
-        db.session.add(new_user)
-        db.session.commit()
-        return redirect(url_for('login'))
+
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            return redirect(url_for('login'))
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"msg": "Error during registration"}), 500
+
     return render_template('register.html')
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
@@ -44,11 +63,22 @@ def login():
             return jsonify({"msg": "Bad username or password"}), 401
     return render_template('login.html')
 
+
 @app.route('/dashboard')
 @jwt_required()
 def dashboard():
+
     current_user = get_jwt_identity()
     return jsonify(logged_in_as=current_user), 200
+
+
+@app.route('/protected', methods=['GET'])
+@jwt_required()
+def protected():
+
+    current_user = get_jwt_identity()
+    return jsonify(logged_in_as=current_user), 200
+
 
 if __name__ == '__main__':
     with app.app_context():
